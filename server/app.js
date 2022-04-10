@@ -1,29 +1,31 @@
 const express = require("express");
 const app = express();
-const bodyParser = require("body-parser");
 const cors = require("cors");
 const server = require("http").createServer(app);
 const io = require("socket.io")(server, {
   cors: {
-    origin: [`http://localhost:3000`],
+    origin: "*",
     method: ["GET", "POSt"],
   },
 });
+
+const VideoRoute = require("./route/playlist");
+
 app.use(cors());
-app.use(express.json());
-app.use(bodyParser.json());
+app.use("/media", VideoRoute);
+
 io.on("connection", (socket) => {
-    console.log("new client connected: " + socket.id);
-  
-    socket.on("join", function (data) {
-      console.log(data);
-    });
-  
-    socket.on("disconnect", () => {
-      console.log("Client disconnect");
-    });  
+  console.log("new client connected: " + socket.id);
+
+  socket.on("join", function (data) {
+    console.log(data);
   });
-  
-  server.listen(8080, function () {
-    console.log("Listening on port 8080!");
-  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnect");
+  });  
+});
+
+server.listen(8080, function () {
+  console.log("Listening on port 8080!");
+});
