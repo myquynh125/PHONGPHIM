@@ -1,33 +1,43 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import axios from "axios";
-import io from "socket.io-client";
-
-const host = "http://localhost:8080";
+import { socket } from "./socketIO";
 
 function VideoPlayer() {
-  const params = useParams();
-  const [flim, SetFLim] = useState([]);
+  const { id } = useParams();
+  const [phim, setPhim] = useState([]);
+  const [room, setRoom] = useState("");
+  const [checkRoom, setCheckRoom] = useState(false);
   const videoRef = useRef();
   const socketRef = useRef();
+  const [user, setUser] = useState([]);
+  const getUser = () => {
+    const item = JSON.parse(sessionStorage.getItem("userInfo"));
+    if (item) {
+      setUser(item);
+    }
+  };
+
   useEffect(() => {
-    socketRef.current = io.connect(host);
+    getUser();
+    socketRef.current = socket;
+  }, []);
+
+  useEffect(() => {
     const FetchData = async () => {
       await axios
-        .get(`http://localhost:8080/media//${params.id}/data`)
+        .get(`http://localhost:8080/phim/phim/${id}`)
         .then((res) => {
-          // console.log(res);
-          SetFLim(res.data);
+          console.log(res.data);
+          setPhim(res.data);
         })
         .catch((err) => {
           console.log(err);
         });
     };
     FetchData();
+    console.log(id);
 
-    // socketRef.current.on("connect", function (data) {
-    //   socketRef.current.emit("join", "hello from client");
-    // });
     socketRef.current.on("current", function (data) {
       videoRef.current.currentTime = data;
     });
@@ -44,20 +54,23 @@ function VideoPlayer() {
     socketRef.current.on("skip", function (value) {
       videoRef.current.currentTime += value;
     });
-  }, [params.id]);
-
-  // socket.on("current", function (data) {
-  //   videoRef.current.currentTime = data;
-  // });
+    socketRef.current.on("sound", function () {
+      videoRef.current.muted = !videoRef.current.muted;
+    });
+    socketRef.current.on("fullscreen", function () {
+      if (videoRef.current.requestFullscreen) {
+        videoRef.current.requestFullscreen();
+      }
+    });
+  }, [id, room]);
 
   const handlePlayVideo = () => {
     videoRef.current.play();
-    // socket.emit("playPause", "play");
-    // socket.emit("current", videoRef.current.currentTime);
     socketRef.current.emit("playPause", "play");
     socketRef.current.emit("current", videoRef.current.currentTime);
     console.log("Play video");
   };
+
   const handlePauseVideo = () => {
     videoRef.current.pause();
     socketRef.current.emit("playPause", "pause");
@@ -83,6 +96,19 @@ function VideoPlayer() {
     console.log("Skip -5s");
   };
 
+  const toggleSound = () => {
+    videoRef.current.muted = !videoRef.current.muted;
+    socketRef.current.emit("sound");
+    socketRef.current.emit("current", videoRef.current.currentTime);
+  };
+
+  const fullScreen = () => {
+    if (videoRef.current.requestFullscreen) {
+      videoRef.current.requestFullscreen();
+    }
+    socketRef.current.emit("fullscreen");
+  };
+
   function formatDur(thoigian) {
     thoigian = Math.round(thoigian);
     var minute = Math.floor(thoigian / 60);
@@ -96,84 +122,131 @@ function VideoPlayer() {
       videoRef.current.currentTime
     );
   }
-
-  if (!flim.name) {
-    return <div>Không có phim</div>;
-  }
+  const joinRoom = (e) => {
+    e.preventDefault();
+    if (room !== "") {
+      socketRef.current.emit("join-room", room);
+      setCheckRoom(!checkRoom);
+    }
+  };
 
   return (
     <div>
-      <div>
-        <Link to="/">Trang chủ</Link>
-      </div>
-      <div className="container">
-        <h1>
-          Tên Phim: {flim.tenphim} - {flim.duration}
-        </h1>
-      </div>
-      <video
-        controls
-        muted
-        style={{ height: "500px", width: "1000px" }}
-        id="movie"
-        name="movie"
-        ref={videoRef}
-        onTimeUpdate={CurrentTimeFunction}
-      >
-        <source
-          src={`http://localhost:8080/media/video/${flim.name}`}
-          type="video/mp4"
-        ></source>
-      </video>
-      <div className="columm" style={{ padding: "10px" }}>
-        {/* Video currentTime */}
+      {user.username ? (
         <div>
-          <b id="currentTime">0:00</b>
+          <Link to="/" style={{ color: "black", fontWeight: "bold" }}>
+            Trang chủ
+          </Link>
         </div>
-        {/* Video currentTime */}
+      ) : null}
 
-        <div style={{ marginBottom: "20px", padding: "10px" }}>
-          <button
-            id="play"
-            onClick={handlePlayVideo}
-            className="btn btn-primary"
-            style={{ margin: "10px" }}
-          >
-            <b> Phát</b>
-          </button>
-          <button
-            id="pause"
-            onClick={handlePauseVideo}
-            className="btn btn-light"
-            style={{ margin: "10px" }}
-          >
-            <b>Dừng</b>
-          </button>
-          <button
-            id="fastFwd"
-            onClick={handleSkipForw(5)}
-            className="btn btn-warning"
-            style={{ margin: "10px" }}
-          >
-            <b> Tua 5s</b>
-          </button>
-          <button
-            id="rew"
-            onClick={handleSkipBack(-5)}
-            className="btn btn-info"
-            style={{ margin: "10px" }}
-          >
-            <b>Về 5s</b>
-          </button>
-          <button
-            id="restart"
-            onClick={handleResetVideo}
-            className="btn btn-danger "
-            style={{ margin: "10px" }}
-          >
-            <b>Reset</b>
-          </button>
-        </div>
+      <div className="container">
+        {!checkRoom ? (
+          <div>
+            <input
+              type={"text"}
+              id="room"
+              placeholder="Nhập mã phòng........"
+              onChange={(e) => setRoom(e.target.value)}
+            ></input>
+            {user.username ? (
+              <button onClick={joinRoom}>Tạo phòng</button>
+            ) : (
+              <>
+                <button onClick={joinRoom}>Join phòng</button>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {phim.map((item, index) => (
+              <div key={index}>
+                <h1>
+                  Tên Phim: {item.tenphim} - {item.duration}
+                </h1>
+
+                <video
+                  controls
+                  muted
+                  style={{ height: "500px", width: "1000px" }}
+                  id="movie"
+                  name="movie"
+                  ref={videoRef}
+                  onTimeUpdate={CurrentTimeFunction}
+                >
+                  <source src={item.linkphim} type="video/mp4"></source>
+                </video>
+
+                <div className="columm" style={{ padding: "10px" }}>
+                  <div>
+                    <b id="currentTime">0:00</b>
+                  </div>
+                </div>
+                {user.username ? (
+                  <div style={{ marginBottom: "20px", padding: "10px" }}>
+                    <button
+                      id="play"
+                      onClick={handlePlayVideo}
+                      className="btn btn-primary"
+                      style={{ margin: "10px" }}
+                    >
+                      <b> Phát</b>
+                    </button>
+                    <button
+                      id="pause"
+                      className="btn btn-light"
+                      style={{ margin: "10px" }}
+                      onClick={handlePauseVideo}
+                    >
+                      <b>Dừng</b>
+                    </button>
+                    <button
+                      id="fastFwd"
+                      className="btn btn-warning"
+                      onClick={handleSkipForw(5)}
+                      style={{ margin: "10px" }}
+                    >
+                      <b> Tua 5s</b>
+                    </button>
+                    <button
+                      id="rew"
+                      className="btn btn-info"
+                      onClick={handleSkipBack(-5)}
+                      style={{ margin: "10px" }}
+                    >
+                      <b>Về 5s</b>
+                    </button>
+                    <button
+                      id="restart"
+                      className="btn btn-danger "
+                      onClick={handleResetVideo}
+                      style={{ margin: "10px" }}
+                    >
+                      <b>Reset</b>
+                    </button>
+
+                    <button
+                      id="muted"
+                      className="btn btn-danger"
+                      onClick={toggleSound}
+                      style={{ margin: "10px" }}
+                    >
+                      <b>Âm thanh</b>
+                    </button>
+                    <button
+                      id="fullscreen"
+                      className="btn btn-dark"
+                      onClick={fullScreen}
+                      style={{ margin: "10px" }}
+                    >
+                      <b>Screen</b>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
